@@ -91,7 +91,7 @@ results$Winner_num <- ifelse(results$Winner == "Blue", 0.5, 1)
 ROC <- roc(results$Winner_num,results$pLogit)
 
 # Plot the ROC curve
- # plot(ROC, col = "blue")
+plot(ROC, col = "blue")
 
 # Calculate the area under the curve (AUC)
 auc(ROC)

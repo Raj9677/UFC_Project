@@ -11,7 +11,7 @@ library(markdown)
 library(DT)
 library(RMariaDB)
 library(sqldf)
-
+library(date)
 
 source('fights.R')
 
@@ -25,7 +25,7 @@ source('ExpectedValueFunctions.R')
 
 ui <- fluidPage(
   
-
+  
   tags$style(HTML("
       #r1 {
           border: 2px double white;
@@ -92,41 +92,56 @@ ui <- fluidPage(
     
     tabPanel("Fighter Match up",
              fluidRow(titlePanel('Fighter Match Up') , align='center',
-    column(4,
-           
-           wellPanel('Expected Result',
-                     uiOutput('resultR')
-             )
-           
-           ),       
-    column(4, align='center',selectInput('gender', 'Select Gender Class', choices = c('select' = '', levels(mstat$gender))),
-           selectInput('class', 'Select Weight Class', choices = c('select' = '', levels(mstat$weight_class)))),
-    column(4,
-           wellPanel('Expected Result',
-             uiOutput('resultB')
-           )
-           ),
-    fluidRow(column(6,titlePanel('Red Corner'),id='r1',selectInput('name', 'Select Fighter', choices = c('select' = '', levels(mstat$name)))),
-            column(6,titlePanel('Blue Corner'),id='b1',selectInput('name2', 'Select Fighter', choices = c('select' = '', levels(mstat$name))))),
-        
-        fluidRow(column(6,'', numericInput('red','Enter Betting Odds',0,
-                                                       -999, 999, 1),id='r2'),
-                 column(6,'', numericInput('blue','Enter Betting Odds',0,
-                                                       -999, 999, 1),id='b2')),
-        
-        fluidRow(column(6,'Characteristics', tableOutput('table7'),id='g1'),
-                 column(6,'Characteristics', tableOutput('table8'),id='g1')),
-      
-      fluidRow(column(6,'Fighter Record', tableOutput('table3'),id='g2'),
-                 column(6,'Fighter Record', tableOutput('table4'),id='g2')),
-      
-      fluidRow(column(6,'Win Details', tableOutput('table5'),id='g1'),
-               column(6,'Win Details', tableOutput('table6'),id='g1')),
-      
-      fluidRow(column(6,'Fight History', tableOutput('table'),id='g2'),
-               column(6,'Fight History', tableOutput('table2'),id='g2')),
-    tableOutput('table9'))
+                      column(4,
+                             
+                             wellPanel('Expected Result',
+                                       uiOutput('resultR')
+                             )
+                             
+                      ),       
+                      column(4, align='center',selectInput('gender', 'Select Gender Class', choices = c('select' = '', levels(mstat$gender))),
+                             selectInput('class', 'Select Weight Class', choices = c('select' = '', levels(mstat$weight_class)))),
+                      column(4,
+                             wellPanel('Expected Result',
+                                       uiOutput('resultB')
+                             )
+                      ),
+                      fluidRow(column(6,titlePanel('Red Corner'),id='r1',selectInput('name', 'Select Fighter', choices = c('select' = '', levels(mstat$name)))),
+                               column(6,titlePanel('Blue Corner'),id='b1',selectInput('name2', 'Select Fighter', choices = c('select' = '', levels(mstat$name))))),
+                      
+                      fluidRow(column(6,'', numericInput('red','Enter Betting Odds',0,
+                                                         -999, 999, 1),id='r2'),
+                               column(6,'', numericInput('blue','Enter Betting Odds',0,
+                                                         -999, 999, 1),id='b2')),
+                      
+                      fluidRow(column(6,'Characteristics', tableOutput('table7'),id='g1'),
+                               column(6,'Characteristics', tableOutput('table8'),id='g1')),
+                      
+                      fluidRow(column(6,'Fighter Record', tableOutput('table3'),id='g2'),
+                               column(6,'Fighter Record', tableOutput('table4'),id='g2')),
+                      
+                      fluidRow(column(6,'Win Details', tableOutput('table5'),id='g1'),
+                               column(6,'Win Details', tableOutput('table6'),id='g1')),
+                      
+                      fluidRow(column(6,'Fight History', tableOutput('table'),id='g2'),
+                               column(6,'Fight History', tableOutput('table2'),id='g2'))
+                      )
+             
+    ),
     
+    tabPanel("Stats",
+             fluidRow(titlePanel('UFC Statistics') , align='center',
+                      column(4),       
+                      column(4, align='center',selectInput('gender2', 'Select Gender Class', choices = c('select' = '', levels(mstat$gender))),
+                             selectInput('class2', 'Select Weight Class', choices = c('select' = '', levels(mstat$weight_class))),
+                             dateRangeInput('daterange','Select date range:', start = as.Date(min(fights$date)), end = as.Date(max(fights$date)), min = min(fights$date),
+                                            max = max(fights$date), format = "mm/dd/yyyy", language = "en", separator = " to ", width = NULL)),
+                      column(4)),
+             fluidRow(column(4,align='center','Top 10 Wins', tableOutput('winstab')),
+                      column(4,align='center','Top 10 Kos', tableOutput('kostab')),
+                      column(4,align='center','Win Distribution', tableOutput('wintype'))
+                      )
+             
     ),
     
     tabPanel("Upcoming matches",  
@@ -232,7 +247,7 @@ ui <- fluidPage(
     fluid = TRUE
     
     
-    ))
+  ))
 
 
 server <- function(input, output, session) {
@@ -241,6 +256,10 @@ server <- function(input, output, session) {
   
   observe({
     updateSelectInput(session, 'class', choices = mstat[mstat$gender==input$gender, 'weight_class'])
+  })
+  
+  observe({
+    updateSelectInput(session, 'class2', choices = fights[fights$gender==input$gender2, 'weight_class'])
   })
   
   observe({
@@ -253,7 +272,7 @@ server <- function(input, output, session) {
                       choices = mstat[mstat$gender==input$gender & mstat$weight_class==input$class & mstat$name!=input$name, 'name'])
   })
   
-
+  
   
   
   tab <- reactive({ 
@@ -265,7 +284,7 @@ server <- function(input, output, session) {
   })
   
   
-
+  
   
   tab2 <- reactive({ 
     
@@ -275,12 +294,70 @@ server <- function(input, output, session) {
       mutate(., date=as.character(date))
   })
   
+  wins <- reactive({ 
+    
+    a <- fights %>% filter(gender == input$gender2) %>% 
+      filter(weight_class == input$class2) %>% 
+      filter(date >= input$daterange[1] & date <= input$daterange[2]) 
+    
+    a <- data.frame(table(a$winner_name))
+    
+    a[
+      with(a, order(-Freq)),
+    ] %>%
+      
+      `colnames<-` (c('Fighter','Wins')) %>%
+      
+      head(10)
+    
+  
+  })
+  
+  
+  kos <- reactive({ 
+    
+    a <- fights %>% filter(gender == input$gender2) %>% 
+      filter(weight_class == input$class2) %>% 
+      filter(finish =='KO/TKO') %>%
+      filter(date >= input$daterange[1] & date <= input$daterange[2]) 
+    
+    a <- data.frame(table(a$winner_name))
+    
+    a[
+      with(a, order(-Freq)),
+    ] %>%
+      
+      `colnames<-` (c('Fighter','KO/TKOs')) %>%
+      
+      head(10)
+    
+    
+  })
+  
+  
+  fightstats <- reactive({ 
+    
+    a <- fights %>% filter(gender == input$gender2) %>% 
+      filter(weight_class == input$class2) %>% 
+      filter(date >= input$daterange[1] & date <= input$daterange[2]) 
+    
+    a <- data.frame(table(a$finish))
+    
+    a[
+      with(a, order(Var1)),
+    ] %>%
+      
+      `colnames<-` (c('Finish','Count')) %>%
+      
+      head(10)
+
+      })
   
   
   stat <- reactive({ 
     
-
-     mstat %>%
+    
+    mstat %>%
       subset(.,name==input$name)
     
   })
@@ -288,7 +365,7 @@ server <- function(input, output, session) {
   
   stat2 <- reactive({ 
     
-
+    
     
     mstat %>%
       subset(.,name==input$name2)
@@ -318,8 +395,8 @@ server <- function(input, output, session) {
   stat_record <- reactive({ 
     
     stat() %>%
-    
-    subset(.,select=c('wins','losses','draw'))
+      
+      subset(.,select=c('wins','losses','draw'))
     
   })
   
@@ -355,10 +432,10 @@ server <- function(input, output, session) {
     R <- mpred %>%
       
       subset(name==input$name) %>%
-    
-    `colnames<-` (c('R_fighter','R_odds','R_tot_str_landed_bout','R_td_landed_bout','R_pass_bout',
-                    'R_kd_bout','R_sub_attempts_bout','R_sig_str_landed_bout','R_sig_str_pct_bout',
-                    'R_tot_str_attempted_bout','R_td_attempted_bout','R_td_pct_bout','date'))
+      
+      `colnames<-` (c('R_fighter','R_odds','R_tot_str_landed_bout','R_td_landed_bout','R_pass_bout',
+                      'R_kd_bout','R_sub_attempts_bout','R_sig_str_landed_bout','R_sig_str_pct_bout',
+                      'R_tot_str_attempted_bout','R_td_attempted_bout','R_td_pct_bout','date'))
     B <-  mpred %>%
       
       subset(name==input$name2) %>%
@@ -383,11 +460,11 @@ server <- function(input, output, session) {
     
     win <- data.frame(win) %>%
       
-    subset(.,select='win')
+      subset(.,select='win')
     
     win <- cbind(ifelse(win>=0.50,1,0),win) 
     
- 
+    
     
   })
   
@@ -462,10 +539,31 @@ server <- function(input, output, session) {
     
   })
   
+  output$winstab <- renderTable({ 
+    
+    wins()
+    
+  })
+  
+  output$kostab <- renderTable({ 
+    
+    kos()
+    
+  })
+  
+  
+  output$wintype <- renderTable({ 
+    
+    
+    fightstats()
+    
+    
+  })
+  
   output$upcoming_events <- DT::renderDataTable({
     DT::datatable(display_uc,options = list(lengthMenu = c(20, 50,100), pageLength = 20))  %>% formatStyle(names(display_uc[,1:7]),backgroundColor = "#FFA2A2")  %>% formatStyle(names(display_uc[,11:17]),backgroundColor = "#A2D0FF")
   })
-
+  
   
   
   output$Joined_Data <- DT::renderDataTable({
@@ -482,64 +580,64 @@ server <- function(input, output, session) {
     if(cell$col>2){
       cell$value = as.numeric(cell$value)
     }
-      
+    
     newdf[cell$row, cell$col] <- cell$value
     Betting_Data(newdf)
   })
   
   observeEvent(input$Go, {
-     DataSelected = Betting_Data()[input$Joined_Data_rows_selected,]
-     
-     Fault = FALSE
-     
-     if(any(is.na(DataSelected))){
-       Fault = TRUE
-       text1("Please remove NA Values or inappropriate text fields from the Rows for calculation")
-        
-     }
-     
-     
-     if(is.numeric(DataSelected[,3]) == FALSE){
-       Fault = TRUE
-       text1("Please make sure R_odds are numeric")
-     }
+    DataSelected = Betting_Data()[input$Joined_Data_rows_selected,]
     
+    Fault = FALSE
+    
+    if(any(is.na(DataSelected))){
+      Fault = TRUE
+      text1("Please remove NA Values or inappropriate text fields from the Rows for calculation")
       
-     if(is.numeric(DataSelected[,4]) == FALSE){
-       Fault = TRUE
-       text1("Please make sure B_odds are numeric")
-     }
-     
-     if(nrow(DataSelected)==0){
-       Fault = TRUE
-       text1("") 
-       
-     }
-     if(is.numeric(DataSelected[,5]) == FALSE || any(is.na(DataSelected[,5]))){
-       Fault = TRUE
-       text1("Please make sure R_prob is numeric")
-     }else{
-          if(nrow(DataSelected)!=0){
-              if(DataSelected[,5] <0 ||  DataSelected[,5] >1){
-               Fault = TRUE
-               text1("Please make sure R_prob is between 0 and 1")
-             } 
-          }
-     }
-     
+    }
+    
+    
+    if(is.numeric(DataSelected[,3]) == FALSE){
+      Fault = TRUE
+      text1("Please make sure R_odds are numeric")
+    }
+    
+    
+    if(is.numeric(DataSelected[,4]) == FALSE){
+      Fault = TRUE
+      text1("Please make sure B_odds are numeric")
+    }
+    
+    if(nrow(DataSelected)==0){
+      Fault = TRUE
+      text1("") 
       
-     if(nrow(DataSelected)>0 && Fault == FALSE){
-       #Call function
-       text1(get_winner_plus_odds(DataSelected))
+    }
+    if(is.numeric(DataSelected[,5]) == FALSE || any(is.na(DataSelected[,5]))){
+      Fault = TRUE
+      text1("Please make sure R_prob is numeric")
+    }else{
+      if(nrow(DataSelected)!=0){
+        if(DataSelected[,5] <0 ||  DataSelected[,5] >1){
+          Fault = TRUE
+          text1("Please make sure R_prob is between 0 and 1")
+        } 
+      }
+    }
+    
+    
+    if(nrow(DataSelected)>0 && Fault == FALSE){
+      #Call function
+      text1(get_winner_plus_odds(DataSelected))
       
-     }
+    }
   })
   
   output$rowData <- renderTable({
     
     Betting_Data()[input$Joined_Data_rows_selected,]
     
-    })
+  })
   
   output$selected_var <- renderText({ 
     paste(text1())
